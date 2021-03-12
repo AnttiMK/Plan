@@ -16,12 +16,14 @@
  */
 package com.djrapitops.plan.extension.implementation.results;
 
+import com.djrapitops.plan.extension.builder.DataValue;
+
 /**
  * Represents boolean data returned by a BooleanProvider method.
  *
  * @author AuroraLS3
  */
-public class ExtensionBooleanData implements DescribedExtensionData {
+public class ExtensionBooleanData implements DescribedExtensionData, DataValue<Boolean> {
 
     private final ExtensionDescriptive descriptive;
     private final boolean value;
@@ -29,6 +31,11 @@ public class ExtensionBooleanData implements DescribedExtensionData {
     public ExtensionBooleanData(ExtensionDescriptive descriptive, boolean value) {
         this.descriptive = descriptive;
         this.value = value;
+    }
+
+    @Override
+    public Boolean getValue() {
+        return value;
     }
 
     public ExtensionDescriptive getDescriptive() {

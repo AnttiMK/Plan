@@ -18,13 +18,14 @@ package com.djrapitops.plan.extension.implementation.results;
 
 import com.djrapitops.plan.delivery.formatting.Formatter;
 import com.djrapitops.plan.extension.FormatType;
+import com.djrapitops.plan.extension.builder.DataValue;
 
 /**
  * Represents double data returned by a DoubleProvider or PercentageProvider method.
  *
  * @author AuroraLS3
  */
-public class ExtensionNumberData implements DescribedExtensionData {
+public class ExtensionNumberData implements DescribedExtensionData, DataValue<Long> {
 
     private final ExtensionDescriptive descriptive;
     private final FormatType formatType;
@@ -34,6 +35,11 @@ public class ExtensionNumberData implements DescribedExtensionData {
         this.descriptive = descriptive;
         this.formatType = formatType;
         this.value = value;
+    }
+
+    @Override
+    public Long getValue() {
+        return value;
     }
 
     public ExtensionDescriptive getDescriptive() {

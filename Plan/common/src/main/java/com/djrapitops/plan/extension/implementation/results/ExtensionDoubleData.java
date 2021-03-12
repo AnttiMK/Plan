@@ -17,13 +17,15 @@
 package com.djrapitops.plan.extension.implementation.results;
 
 import com.djrapitops.plan.delivery.formatting.Formatter;
+import com.djrapitops.plan.extension.builder.DataValue;
 
 /**
  * Represents double data returned by a DoubleProvider or PercentageProvider method.
  *
  * @author AuroraLS3
  */
-public class ExtensionDoubleData implements DescribedExtensionData {
+// TODO differentiate between percentage and double data
+public class ExtensionDoubleData implements DescribedExtensionData, DataValue<Double> {
 
     private final ExtensionDescriptive descriptive;
     private final double value;
@@ -31,6 +33,11 @@ public class ExtensionDoubleData implements DescribedExtensionData {
     public ExtensionDoubleData(ExtensionDescriptive descriptive, double value) {
         this.descriptive = descriptive;
         this.value = value;
+    }
+
+    @Override
+    public Double getValue() {
+        return value;
     }
 
     public ExtensionDescriptive getDescriptive() {

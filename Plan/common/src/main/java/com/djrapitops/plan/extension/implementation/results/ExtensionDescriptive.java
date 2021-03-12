@@ -27,6 +27,7 @@ import java.util.Optional;
  *
  * @author AuroraLS3
  */
+// TODO Add tab name to this
 public class ExtensionDescriptive implements Comparable<ExtensionDescriptive> {
 
     private final String name;
