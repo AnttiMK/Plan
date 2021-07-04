@@ -15,7 +15,5 @@ body:
 - type: textarea
   attributes:
     label: test
-    value: |
-    \`\`\`
-    Paste your exception / log file here
+    value: "``````"
     
