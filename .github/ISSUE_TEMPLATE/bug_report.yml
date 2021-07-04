@@ -1,5 +1,5 @@
 name: 🐞 Bug report
-description: Create a report to help improving the plugin
+description: Create a report to help improve the plugin
 labels: [Bug]
 body:
 - type: markdown
