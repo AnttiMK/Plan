@@ -16,7 +16,7 @@ body:
 - type: textarea
   attributes:
     label: Exceptions & other logs
-    description: Paste all relevant log files here
+    description: Paste all relevant log files here.
     value: |
       ```
       Paste your exception or log file here
