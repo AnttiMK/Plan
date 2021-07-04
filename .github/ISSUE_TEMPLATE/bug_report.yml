@@ -15,5 +15,8 @@ body:
 - type: textarea
   attributes:
     label: test
-    value: "```\nTest\n```"
+    value: |
+    '```'
+    test
+    '```'
     
