@@ -1,0 +1,8 @@
+name: Bug report
+description: Create a report to help improving the plugin
+labels: [Bug]
+body:
+- type: textarea
+  attributes:
+    label: Describe the issue
+    description: A clear and concise description of what the issue is, and when it occurred. Post possible exceptions further down below.
