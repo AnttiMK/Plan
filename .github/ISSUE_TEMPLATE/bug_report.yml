@@ -24,7 +24,7 @@ body:
 - type: input
   attributes:
     label: Plan version
-    description: What Plan version are you using? (`plan version` or `planproxy version`)
+    description: What version of Plan are you using? (`plan version` or `planproxy version`)
   validations:
     required: true
 - type: textarea
