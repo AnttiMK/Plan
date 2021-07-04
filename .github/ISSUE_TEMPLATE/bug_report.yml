@@ -5,8 +5,8 @@ body:
 - type: markdown
   attributes:
     value: |
-      "> ⚠ Attention CloudFlare users!"
-      "> Before submitting a bug report about JavaScript errors, make sure to purge/disable your site cache."
+      > ⚠ Attention CloudFlare users!
+      > Before submitting a bug report about JavaScript errors, make sure to purge/disable your site cache.
     
 - type: textarea
   attributes:
