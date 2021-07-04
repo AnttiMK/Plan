@@ -12,3 +12,10 @@ body:
   attributes:
     label: Describe the issue
     description: A clear and concise description of what the issue is, and when it occurred. Post possible exceptions further down below.
+- type: textarea
+  attributes:
+    value: |
+    ```
+    Paste your exception / log file here
+    ```
+    
