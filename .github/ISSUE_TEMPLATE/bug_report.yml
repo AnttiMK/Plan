@@ -21,3 +21,13 @@ body:
       ```
       Paste your exception or log file here
       ```
+- type: input
+  attributes:
+    label: Plan version
+    description: What Plan version are you using? (`plan version` or `planproxy version`)
+  validations:
+    required: true
+- type: textarea
+  attributes:
+    label: Additional information
+    description: Any additional information goes here (for example plugin versions, context, what was attempted, etc).
