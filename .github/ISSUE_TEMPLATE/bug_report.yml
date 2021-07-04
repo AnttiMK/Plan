@@ -16,7 +16,6 @@ body:
   attributes:
     label: test
     value: |
-    '\`\`\`'
-    test
-    '```'
-    
+      \`\`\`
+      test
+      ```
