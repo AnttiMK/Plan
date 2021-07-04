@@ -14,8 +14,9 @@ body:
     description: A clear and concise description of what the issue is, and when it occurred. Post possible exceptions further down below.
 - type: textarea
   attributes:
-    label: test
+    label: Exceptions & other logs
+    description: Paste all relevant log files here
     value: |
-      \`\`\`
-      test
+      ```
+      Paste your exception or log file here
       ```
