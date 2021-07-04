@@ -7,12 +7,11 @@ body:
     value: |
       > ⚠ **Attention CloudFlare users!** ⚠
       > Before submitting a bug report about JavaScript errors, make sure to purge/disable your site cache, wait a few minutes and see if the error still persists. Most JavaScript errors are caused by cached JS files that aren't updated when Plan is updated.
-    
 - type: textarea
   attributes:
     label: Describe the issue
     description: A clear and concise description of what the issue is, and when it occurred. Post possible exceptions further down below.
-    validations:
+  validations:
       required: true
 - type: textarea
   attributes:
