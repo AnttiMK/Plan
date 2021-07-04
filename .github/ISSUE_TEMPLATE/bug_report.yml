@@ -15,7 +15,6 @@ body:
 - type: textarea
   attributes:
     value: |
-    "```"
-    "Paste your exception / log file here"
-    "```"
+    \`\`\`
+    Paste your exception / log file here
     
