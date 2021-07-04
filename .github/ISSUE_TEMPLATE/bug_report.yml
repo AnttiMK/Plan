@@ -2,6 +2,12 @@ name: Bug report
 description: Create a report to help improving the plugin
 labels: [Bug]
 body:
+- type: markdown
+  attributes:
+    value: |
+      "> ⚠ Attention CloudFlare users!"
+      "> Before submitting a bug report about JavaScript errors, make sure to purge/disable your site cache."
+    
 - type: textarea
   attributes:
     label: Describe the issue
