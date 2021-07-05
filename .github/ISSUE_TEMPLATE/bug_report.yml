@@ -17,10 +17,7 @@ body:
   attributes:
     label: Exceptions & other logs
     description: Paste all relevant log files here.
-    value: |
-      ```
-      Paste your exception or log file here
-      ```
+    render: text
 - type: input
   attributes:
     label: Plan version
