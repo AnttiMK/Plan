@@ -121,6 +121,7 @@ subprojects {
         }
 
         // Required for JUnit to discover tests in modules.
+        testImplementation "org.junit.jupiter:junit-jupiter:$junitVersion"
         testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     }
 
