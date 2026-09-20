@@ -29,7 +29,6 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.*;
-import java.util.concurrent.TimeUnit;
 
 import static com.djrapitops.plan.storage.database.sql.building.Sql.*;
 
@@ -91,7 +90,7 @@ public class NetworkActivityIndexQueries {
                 "COALESCE(active_playtime,0) AS active_playtime" +
                 FROM + UsersTable.TABLE_NAME + " ax_ux" +
                 LEFT_JOIN + '(' + SELECT + SessionsTable.USER_ID +
-                ",SUM(" + SessionsTable.SESSION_END + '-' + SessionsTable.SESSION_START + '-' + SessionsTable.AFK_TIME + ") as active_playtime" +
+                ',' + sum(ActivityIndexQueries.activePlaytimeSQL("")) + " as active_playtime" +
                 FROM + SessionsTable.TABLE_NAME +
                 WHERE + SessionsTable.SESSION_END + ">=?" +
                 AND + SessionsTable.SESSION_START + "<=?" +
@@ -102,7 +101,7 @@ public class NetworkActivityIndexQueries {
         String selectThreeWeeks = selectActivePlaytimeSQL + UNION_ALL + selectActivePlaytimeSQL + UNION_ALL + selectActivePlaytimeSQL;
 
         return SELECT +
-                "5.0 - 5.0 * AVG(1.0 / (?/2.0 * (ax_q1.active_playtime*1.0/?) +1.0)) as activity_index," +
+                ActivityIndexQueries.activityIndexFromAveragePlaytimeSQL("ax_q1.active_playtime", "?", "?") + " as activity_index," +
                 "ax_u." + UsersTable.ID + " as user_id," +
                 "ax_u." + UsersTable.USER_UUID +
                 FROM + '(' + selectThreeWeeks + ") ax_q1" +
@@ -111,15 +110,8 @@ public class NetworkActivityIndexQueries {
     }
 
     public static void setSelectActivityIndexSQLParameters(PreparedStatement statement, int index, long playtimeThreshold, long date) throws SQLException {
-        statement.setDouble(index, Math.PI);
-        statement.setLong(index + 1, playtimeThreshold);
-
-        statement.setLong(index + 2, date - TimeUnit.DAYS.toMillis(7L));
-        statement.setLong(index + 3, date);
-        statement.setLong(index + 4, date - TimeUnit.DAYS.toMillis(14L));
-        statement.setLong(index + 5, date - TimeUnit.DAYS.toMillis(7L));
-        statement.setLong(index + 6, date - TimeUnit.DAYS.toMillis(21L));
-        statement.setLong(index + 7, date - TimeUnit.DAYS.toMillis(14L));
+        ActivityIndexQueries.setActivityIndexParameters(statement, index, playtimeThreshold);
+        ActivityIndexQueries.setWeeklyActivePlaytimeParameters(statement, index + 2, date);
     }
 
     public static Query<Integer> fetchActivityGroupCount(long date, long playtimeThreshold, double above, double below) {

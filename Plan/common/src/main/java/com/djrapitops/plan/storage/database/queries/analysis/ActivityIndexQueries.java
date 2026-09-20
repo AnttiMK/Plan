@@ -81,12 +81,58 @@ public class ActivityIndexQueries {
         return fetchActivityGroupCount(date, serverUUID, playtimeThreshold, ActivityIndex.REGULAR, 5.1);
     }
 
+    public static String activePlaytimeSQL(String sessionAlias) {
+        String prefix = sessionAlias.isEmpty() ? "" : sessionAlias + '.';
+        return prefix + SessionsTable.SESSION_END
+                + '-' + prefix + SessionsTable.SESSION_START
+                + '-' + prefix + SessionsTable.AFK_TIME;
+    }
+
+    public static String weeklyActivePlaytimeSQL(String sessionAlias) {
+        String prefix = sessionAlias.isEmpty() ? "" : sessionAlias + '.';
+        String activePlaytime = activePlaytimeSQL(sessionAlias);
+        return sum("CASE WHEN " + prefix + SessionsTable.SESSION_END + ">=? AND "
+                + prefix + SessionsTable.SESSION_START + "<=? THEN " + activePlaytime + " ELSE 0 END") + " AS week_1,"
+                + sum("CASE WHEN " + prefix + SessionsTable.SESSION_END + ">=? AND "
+                + prefix + SessionsTable.SESSION_START + "<=? THEN " + activePlaytime + " ELSE 0 END") + " AS week_2,"
+                + sum("CASE WHEN " + prefix + SessionsTable.SESSION_END + ">=? AND "
+                + prefix + SessionsTable.SESSION_START + "<=? THEN " + activePlaytime + " ELSE 0 END") + " AS week_3";
+    }
+
+    public static String activityIndexFromWeeklyPlaytimeSQL(String metricsAlias, String parametersAlias) {
+        String pi = parametersAlias + ".pi";
+        String threshold = parametersAlias + ".threshold";
+        String weekOne = inactivityIndexSQL("COALESCE(" + metricsAlias + ".week_1,0)", pi, threshold);
+        String weekTwo = inactivityIndexSQL("COALESCE(" + metricsAlias + ".week_2,0)", pi, threshold);
+        String weekThree = inactivityIndexSQL("COALESCE(" + metricsAlias + ".week_3,0)", pi, threshold);
+        return activityIndexSQL("((" + weekOne + '+' + weekTwo + '+' + weekThree + ")/3.0)");
+    }
+
+    public static String activityIndexParametersSQL() {
+        return SELECT + "? AS pi,? AS threshold";
+    }
+
+    public static void setWeeklyActivePlaytimeParameters(PreparedStatement statement, int index, long date) throws SQLException {
+        long week = TimeUnit.DAYS.toMillis(7L);
+        statement.setLong(index, date - week);
+        statement.setLong(index + 1, date);
+        statement.setLong(index + 2, date - 2L * week);
+        statement.setLong(index + 3, date - week);
+        statement.setLong(index + 4, date - 3L * week);
+        statement.setLong(index + 5, date - 2L * week);
+    }
+
+    public static void setActivityIndexParameters(PreparedStatement statement, int index, long playtimeThreshold) throws SQLException {
+        statement.setDouble(index, Math.PI);
+        statement.setLong(index + 1, playtimeThreshold);
+    }
+
     public static String selectActivityIndexSQL() {
         String selectActivePlaytimeSQL = SELECT +
                 "ax_ux." + UserInfoTable.USER_ID + ",COALESCE(active_playtime,0) AS active_playtime" +
                 FROM + UserInfoTable.TABLE_NAME + " ax_ux" +
                 LEFT_JOIN + '(' + SELECT + SessionsTable.USER_ID +
-                ",SUM(" + SessionsTable.SESSION_END + '-' + SessionsTable.SESSION_START + '-' + SessionsTable.AFK_TIME + ") as active_playtime" +
+                ',' + sum(activePlaytimeSQL("")) + " as active_playtime" +
                 FROM + SessionsTable.TABLE_NAME +
                 WHERE + SessionsTable.SERVER_ID + "=" + ServerTable.SELECT_SERVER_ID +
                 AND + SessionsTable.SESSION_END + ">=?" +
@@ -97,7 +143,7 @@ public class ActivityIndexQueries {
         String selectThreeWeeks = selectActivePlaytimeSQL + UNION_ALL + selectActivePlaytimeSQL + UNION_ALL + selectActivePlaytimeSQL;
 
         return SELECT +
-                "5.0 - 5.0 * AVG(1.0 / (?/2.0 * (ax_q1.active_playtime*1.0/?) +1.0)) as activity_index," +
+                activityIndexFromAveragePlaytimeSQL("ax_q1.active_playtime", "?", "?") + " as activity_index," +
                 "ax_u." + UsersTable.ID + " as user_id," +
                 "ax_u." + UsersTable.USER_UUID +
                 FROM + '(' + selectThreeWeeks + ") ax_q1" +
@@ -106,8 +152,7 @@ public class ActivityIndexQueries {
     }
 
     public static void setSelectActivityIndexSQLParameters(PreparedStatement statement, int index, long playtimeThreshold, ServerUUID serverUUID, long date) throws SQLException {
-        statement.setDouble(index, Math.PI);
-        statement.setLong(index + 1, playtimeThreshold);
+        setActivityIndexParameters(statement, index, playtimeThreshold);
 
         statement.setString(index + 2, serverUUID.toString());
         statement.setLong(index + 3, date - TimeUnit.DAYS.toMillis(7L));
@@ -118,6 +163,18 @@ public class ActivityIndexQueries {
         statement.setString(index + 8, serverUUID.toString());
         statement.setLong(index + 9, date - TimeUnit.DAYS.toMillis(21L));
         statement.setLong(index + 10, date - TimeUnit.DAYS.toMillis(14L));
+    }
+
+    static String activityIndexFromAveragePlaytimeSQL(String playtime, String pi, String threshold) {
+        return activityIndexSQL("AVG(" + inactivityIndexSQL(playtime, pi, threshold) + ')');
+    }
+
+    private static String inactivityIndexSQL(String playtime, String pi, String threshold) {
+        return "1.0/(" + pi + "/2.0*(" + playtime + "*1.0/" + threshold + ")+1.0)";
+    }
+
+    private static String activityIndexSQL(String averageInactivity) {
+        return "5.0-5.0*(" + averageInactivity + ')';
     }
 
     public static Query<Integer> fetchActivityGroupCount(long date, ServerUUID serverUUID, long playtimeThreshold, double above, double below) {
