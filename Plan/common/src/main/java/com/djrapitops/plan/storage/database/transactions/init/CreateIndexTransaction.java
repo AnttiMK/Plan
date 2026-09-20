@@ -61,12 +61,22 @@ public class CreateIndexTransaction extends Transaction {
                 PingTable.MIN_PING,
                 PingTable.MAX_PING,
                 PingTable.AVG_PING);
+        createIndex(PingTable.TABLE_NAME, "plan_ping_user_metrics",
+                PingTable.USER_ID,
+                PingTable.MIN_PING,
+                PingTable.MAX_PING,
+                PingTable.AVG_PING);
         createIndex(TPSTable.TABLE_NAME, "plan_tps_date_index", TPSTable.DATE);
         createIndex(TPSTable.TABLE_NAME, "plan_tps_server_date_index", TPSTable.SERVER_ID, TPSTable.DATE);
 
         createIndex(SessionsTable.TABLE_NAME, "plan_session_join_address_index", SessionsTable.JOIN_ADDRESS_ID);
         createIndex(SessionsTable.TABLE_NAME, "plan_sessions_server_user_end_metrics",
                 SessionsTable.SERVER_ID,
+                SessionsTable.USER_ID,
+                SessionsTable.SESSION_END,
+                SessionsTable.SESSION_START,
+                SessionsTable.AFK_TIME);
+        createIndex(SessionsTable.TABLE_NAME, "plan_sessions_user_end_metrics",
                 SessionsTable.USER_ID,
                 SessionsTable.SESSION_END,
                 SessionsTable.SESSION_START,
