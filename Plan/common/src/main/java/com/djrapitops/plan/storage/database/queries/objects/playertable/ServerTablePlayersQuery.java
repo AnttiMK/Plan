@@ -132,8 +132,10 @@ public class ServerTablePlayersQuery implements Query<List<TablePlayer>> {
                 FROM + GeoInfoTable.TABLE_NAME + " a" +
                 INNER_JOIN + "recent_players rp ON rp." + UserInfoTable.USER_ID + "=a." + GeoInfoTable.USER_ID +
                 LEFT_JOIN + GeoInfoTable.TABLE_NAME + " b ON a." + GeoInfoTable.USER_ID + "=b." + GeoInfoTable.USER_ID +
-                AND + "a." + GeoInfoTable.LAST_USED + "<b." + GeoInfoTable.LAST_USED +
-                WHERE + "b." + GeoInfoTable.LAST_USED + IS_NULL +
+                AND + "(a." + GeoInfoTable.LAST_USED + "<b." + GeoInfoTable.LAST_USED +
+                OR + "(a." + GeoInfoTable.LAST_USED + "=b." + GeoInfoTable.LAST_USED +
+                AND + "a." + GeoInfoTable.ID + "<b." + GeoInfoTable.ID + "))" +
+                WHERE + "b." + GeoInfoTable.ID + IS_NULL +
                 ')' +
                 SELECT + "u." + UsersTable.USER_UUID + ',' +
                 "u." + UsersTable.USER_NAME + ',' +

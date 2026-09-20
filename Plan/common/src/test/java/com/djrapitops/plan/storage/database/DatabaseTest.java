@@ -414,9 +414,12 @@ public interface DatabaseTest extends DatabaseTestPreparer {
                 playerUUID, new Nickname("OtherServerNick", date - 100L, secondServer), (uuid, name) -> false));
         db().executeTransaction(new StoreGeoInfoTransaction(playerUUID, new GeoInfo("Old location", date - 200L)));
         db().executeTransaction(new StoreGeoInfoTransaction(playerUUID, new GeoInfo("Latest location", date - 100L)));
+        db().executeTransaction(new StoreGeoInfoTransaction(playerUUID, new GeoInfo("Tied latest location", date - 100L)));
         db().executeTransaction(new BanStatusTransaction(playerUUID, serverUUID(), true));
 
-        TablePlayer result = db().query(new ServerTablePlayersQuery(serverUUID(), date, 10_000L, 1)).get(0);
+        List<TablePlayer> players = db().query(new ServerTablePlayersQuery(serverUUID(), date, 10_000L, 1));
+        assertEquals(1, players.size());
+        TablePlayer result = players.get(0);
 
         assertEquals(1, result.getSessionCount().orElseThrow());
         assertEquals(900L, result.getActivePlaytime().orElseThrow());
@@ -424,7 +427,7 @@ public interface DatabaseTest extends DatabaseTestPreparer {
         assertEquals(new Ping(0L, serverUUID(), 10, 30, 20.0), result.getPing());
         assertEquals(Set.of("CurrentServerNick", "OtherServerNick"),
                 Set.of(result.getNicknames().split(",")));
-        assertEquals("Latest location", result.getGeolocation().orElseThrow());
+        assertEquals("Tied latest location", result.getGeolocation().orElseThrow());
         assertTrue(result.isBanned());
     }
 
