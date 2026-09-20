@@ -23,7 +23,6 @@ import com.djrapitops.plan.identification.ServerUUID;
 import com.djrapitops.plan.storage.database.SQLDB;
 import com.djrapitops.plan.storage.database.queries.Query;
 import com.djrapitops.plan.storage.database.queries.QueryStatement;
-import com.djrapitops.plan.storage.database.queries.analysis.ActivityIndexQueries;
 import com.djrapitops.plan.storage.database.sql.tables.*;
 
 import java.sql.PreparedStatement;
@@ -32,6 +31,7 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 import static com.djrapitops.plan.storage.database.sql.building.Sql.*;
 
@@ -64,75 +64,112 @@ public class ServerTablePlayersQuery implements Query<List<TablePlayer>> {
 
     @Override
     public List<TablePlayer> executeQuery(SQLDB db) {
-        String selectLatestGeolocations = SELECT +
-                "a." + GeoInfoTable.USER_ID + ',' +
+        long week = TimeUnit.DAYS.toMillis(7L);
+        String sessionDuration = "s." + SessionsTable.SESSION_END
+                + "-s." + SessionsTable.SESSION_START
+                + "-s." + SessionsTable.AFK_TIME;
+        String serverId = "(SELECT server_id FROM server_context)";
+        String weeklyActivity = "COALESCE(sm.week_%d,0)*1.0/ap.threshold";
+        String activityTerm = "1.0/(ap.pi/2.0*(%s)+1.0)";
+        String activityIndex = "5.0-5.0*(("
+                + String.format(activityTerm, String.format(weeklyActivity, 1)) + '+'
+                + String.format(activityTerm, String.format(weeklyActivity, 2)) + '+'
+                + String.format(activityTerm, String.format(weeklyActivity, 3))
+                + ")/3.0)";
+
+        String sql = "WITH server_context AS (" +
+                SELECT + ServerTable.ID + " AS server_id" +
+                FROM + ServerTable.TABLE_NAME +
+                WHERE + ServerTable.SERVER_UUID + "=?" +
+                LIMIT + '1' +
+                "), session_last_seen AS (" +
+                SELECT + "s." + SessionsTable.USER_ID + ',' +
+                max("s." + SessionsTable.SESSION_END) + " AS last_seen" +
+                FROM + SessionsTable.TABLE_NAME + " s" +
+                WHERE + "s." + SessionsTable.SERVER_ID + '=' + serverId +
+                GROUP_BY + "s." + SessionsTable.USER_ID +
+                "), recent_players AS (" +
+                SELECT + "ui." + UserInfoTable.USER_ID + ',' +
+                "ui." + UserInfoTable.BANNED + ',' +
+                "sls.last_seen" +
+                FROM + UserInfoTable.TABLE_NAME + " ui" +
+                LEFT_JOIN + "session_last_seen sls ON sls." + SessionsTable.USER_ID + "=ui." + UserInfoTable.USER_ID +
+                WHERE + "ui." + UserInfoTable.SERVER_ID + '=' + serverId +
+                ORDER_BY + "sls.last_seen DESC" +
+                LIMIT + '?' +
+                "), session_metrics AS (" +
+                SELECT + "s." + SessionsTable.USER_ID + ',' +
+                "COUNT(1) AS count," +
+                sum(sessionDuration) + " AS active_playtime," +
+                sum("CASE WHEN s." + SessionsTable.SESSION_END + ">=? AND s." + SessionsTable.SESSION_START + "<=? THEN " + sessionDuration + " ELSE 0 END") + " AS week_1," +
+                sum("CASE WHEN s." + SessionsTable.SESSION_END + ">=? AND s." + SessionsTable.SESSION_START + "<=? THEN " + sessionDuration + " ELSE 0 END") + " AS week_2," +
+                sum("CASE WHEN s." + SessionsTable.SESSION_END + ">=? AND s." + SessionsTable.SESSION_START + "<=? THEN " + sessionDuration + " ELSE 0 END") + " AS week_3" +
+                FROM + SessionsTable.TABLE_NAME + " s" +
+                INNER_JOIN + "recent_players rp ON rp." + UserInfoTable.USER_ID + "=s." + SessionsTable.USER_ID +
+                WHERE + "s." + SessionsTable.SERVER_ID + '=' + serverId +
+                GROUP_BY + "s." + SessionsTable.USER_ID +
+                "), activity_parameters AS (" +
+                SELECT + "? AS pi,? AS threshold" +
+                "), ping_data AS (" +
+                SELECT + "p." + PingTable.USER_ID + ',' +
+                avg("p." + PingTable.AVG_PING) + " AS " + PingTable.AVG_PING + ',' +
+                max("p." + PingTable.MAX_PING) + " AS " + PingTable.MAX_PING + ',' +
+                min("p." + PingTable.MIN_PING) + " AS " + PingTable.MIN_PING +
+                FROM + PingTable.TABLE_NAME + " p" +
+                INNER_JOIN + "recent_players rp ON rp." + UserInfoTable.USER_ID + "=p." + PingTable.USER_ID +
+                WHERE + "p." + PingTable.SERVER_ID + '=' + serverId +
+                GROUP_BY + "p." + PingTable.USER_ID +
+                "), nickname_data AS (" +
+                SELECT + "n." + NicknamesTable.USER_UUID + ',' +
+                "GROUP_CONCAT(DISTINCT n." + NicknamesTable.NICKNAME + ") AS nicknames" +
+                FROM + NicknamesTable.TABLE_NAME + " n" +
+                INNER_JOIN + UsersTable.TABLE_NAME + " nu ON nu." + UsersTable.USER_UUID + "=n." + NicknamesTable.USER_UUID +
+                INNER_JOIN + "recent_players rp ON rp." + UserInfoTable.USER_ID + "=nu." + UsersTable.ID +
+                GROUP_BY + "n." + NicknamesTable.USER_UUID +
+                "), geolocation_data AS (" +
+                SELECT + "a." + GeoInfoTable.USER_ID + ',' +
                 "a." + GeoInfoTable.GEOLOCATION +
                 FROM + GeoInfoTable.TABLE_NAME + " a" +
-                // Super smart optimization https://stackoverflow.com/a/28090544
-                // Join the last_used column, but only if there's a bigger one.
-                // That way the biggest a.last_used value will have NULL on the b.last_used column and MAX doesn't need to be used.
-                LEFT_JOIN + GeoInfoTable.TABLE_NAME + " b ON a." + GeoInfoTable.USER_ID + "=b." + GeoInfoTable.USER_ID + AND + "a." + GeoInfoTable.LAST_USED + "<b." + GeoInfoTable.LAST_USED +
-                WHERE + "b." + GeoInfoTable.LAST_USED + IS_NULL;
-
-        String selectSessionData = SELECT + "s." + SessionsTable.USER_ID + ',' +
-                "MAX(" + SessionsTable.SESSION_END + ") as last_seen," +
-                "COUNT(1) as count," +
-                "SUM(" + SessionsTable.SESSION_END + '-' + SessionsTable.SESSION_START + '-' + SessionsTable.AFK_TIME + ") as active_playtime" +
-                FROM + SessionsTable.TABLE_NAME + " s" +
-                INNER_JOIN + ServerTable.TABLE_NAME + " s_se ON s_se." + ServerTable.ID + "=s." + SessionsTable.SERVER_ID +
-                WHERE + "s_se." + ServerTable.SERVER_UUID + "=?" +
-                GROUP_BY + "s." + SessionsTable.USER_ID;
-
-        String selectPingData = SELECT +
-                "p." + PingTable.USER_ID + ',' +
-                "AVG(p." + PingTable.AVG_PING + ") as " + PingTable.AVG_PING + "," +
-                "MAX(p." + PingTable.MAX_PING + ") as " + PingTable.MAX_PING + "," +
-                "MIN(p." + PingTable.MIN_PING + ") as " + PingTable.MIN_PING +
-                FROM + PingTable.TABLE_NAME + " p" +
-                INNER_JOIN + ServerTable.TABLE_NAME + " p_se ON p_se." + ServerTable.ID + "=p." + PingTable.SERVER_ID +
-                WHERE + "p_se." + ServerTable.SERVER_UUID + "=?" +
-                GROUP_BY + "p." + PingTable.USER_ID;
-
-        String selectNicknames = SELECT +
-                "un." + UsersTable.ID + ',' +
-                "GROUP_CONCAT(DISTINCT " + "n." + NicknamesTable.NICKNAME + ") as nicknames" +
-                FROM + NicknamesTable.TABLE_NAME + " n" +
-                INNER_JOIN + UsersTable.TABLE_NAME + " un ON n." + NicknamesTable.USER_UUID + "=un." + UsersTable.USER_UUID +
-                GROUP_BY + "un." + UsersTable.ID;
-
-        String selectBaseUsers = SELECT +
-                "u." + UsersTable.USER_UUID + ',' +
+                INNER_JOIN + "recent_players rp ON rp." + UserInfoTable.USER_ID + "=a." + GeoInfoTable.USER_ID +
+                LEFT_JOIN + GeoInfoTable.TABLE_NAME + " b ON a." + GeoInfoTable.USER_ID + "=b." + GeoInfoTable.USER_ID +
+                AND + "a." + GeoInfoTable.LAST_USED + "<b." + GeoInfoTable.LAST_USED +
+                WHERE + "b." + GeoInfoTable.LAST_USED + IS_NULL +
+                ')' +
+                SELECT + "u." + UsersTable.USER_UUID + ',' +
                 "u." + UsersTable.USER_NAME + ',' +
                 "u." + UsersTable.REGISTERED + ',' +
-                UserInfoTable.BANNED + ',' +
+                "rp." + UserInfoTable.BANNED + ',' +
                 "geo." + GeoInfoTable.GEOLOCATION + ',' +
-                "ses.last_seen," +
-                "ses.count," +
-                "ses.active_playtime," +
-                "act.activity_index," +
-                "pi.min_ping," +
-                "pi.max_ping," +
-                "pi.avg_ping," +
+                "rp.last_seen," +
+                "sm.count," +
+                "sm.active_playtime," +
+                activityIndex + " AS activity_index," +
+                "pi." + PingTable.MIN_PING + ',' +
+                "pi." + PingTable.MAX_PING + ',' +
+                "pi." + PingTable.AVG_PING + ',' +
                 "ni.nicknames" +
-                FROM + UsersTable.TABLE_NAME + " u" +
-                INNER_JOIN + UserInfoTable.TABLE_NAME + " ui on u." + UsersTable.ID + "=ui." + UserInfoTable.USER_ID +
-                LEFT_JOIN + '(' + selectLatestGeolocations + ") geo on geo." + GeoInfoTable.USER_ID + "=u." + UsersTable.ID +
-                LEFT_JOIN + '(' + selectSessionData + ") ses on ses." + SessionsTable.USER_ID + "=u." + UsersTable.ID +
-                LEFT_JOIN + '(' + ActivityIndexQueries.selectActivityIndexSQL() + ") act on u." + UsersTable.ID + "=act." + UserInfoTable.USER_ID +
-                LEFT_JOIN + '(' + selectPingData + ") pi on pi." + PingTable.USER_ID + "=u." + UsersTable.ID +
-                LEFT_JOIN + '(' + selectNicknames + ") ni on ni." + UsersTable.ID + "=u." + UsersTable.ID +
-                INNER_JOIN + ServerTable.TABLE_NAME + " s_out ON s_out." + ServerTable.ID + "=ui." + UserInfoTable.SERVER_ID +
-                WHERE + "s_out." + ServerTable.SERVER_UUID + "=?" +
-                ORDER_BY + "ses.last_seen DESC LIMIT ?";
+                FROM + "recent_players rp" +
+                INNER_JOIN + UsersTable.TABLE_NAME + " u ON u." + UsersTable.ID + "=rp." + UserInfoTable.USER_ID +
+                " CROSS JOIN activity_parameters ap" +
+                LEFT_JOIN + "session_metrics sm ON sm." + SessionsTable.USER_ID + "=rp." + UserInfoTable.USER_ID +
+                LEFT_JOIN + "ping_data pi ON pi." + PingTable.USER_ID + "=rp." + UserInfoTable.USER_ID +
+                LEFT_JOIN + "nickname_data ni ON ni." + NicknamesTable.USER_UUID + "=u." + UsersTable.USER_UUID +
+                LEFT_JOIN + "geolocation_data geo ON geo." + GeoInfoTable.USER_ID + "=rp." + UserInfoTable.USER_ID +
+                ORDER_BY + "rp.last_seen DESC";
 
-        return db.query(new QueryStatement<>(selectBaseUsers, 1000) {
+        return db.query(new QueryStatement<>(sql, 1000) {
             @Override
             public void prepare(PreparedStatement statement) throws SQLException {
-                statement.setString(1, serverUUID.toString()); // Session query
-                ActivityIndexQueries.setSelectActivityIndexSQLParameters(statement, 2, activeMsThreshold, serverUUID, date);
-                statement.setString(13, serverUUID.toString()); // Ping query
-                statement.setString(14, serverUUID.toString()); // Main query
-                statement.setInt(15, xMostRecentPlayers);
+                statement.setString(1, serverUUID.toString());
+                statement.setInt(2, xMostRecentPlayers);
+                statement.setLong(3, date - week);
+                statement.setLong(4, date);
+                statement.setLong(5, date - 2L * week);
+                statement.setLong(6, date - week);
+                statement.setLong(7, date - 3L * week);
+                statement.setLong(8, date - 2L * week);
+                statement.setDouble(9, Math.PI);
+                statement.setLong(10, activeMsThreshold);
             }
 
             @Override
