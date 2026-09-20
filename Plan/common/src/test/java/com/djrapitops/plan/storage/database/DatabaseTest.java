@@ -383,6 +383,17 @@ public interface DatabaseTest extends DatabaseTestPreparer {
         assertEquals(0L, playerWithoutSessions.getActivePlaytime().orElseThrow());
         assertEquals(0, playerWithoutSessions.getSessionCount().orElseThrow());
         assertEquals(0.0, playerWithoutSessions.getCurrentActivityIndex().orElseThrow().getValue());
+
+        List<TablePlayer> networkLimited = db().query(new NetworkTablePlayersQuery(date, 10_000L, 2));
+        assertEquals(List.of(player2UUID, playerUUID),
+                networkLimited.stream().map(TablePlayer::getPlayerUUID).toList());
+        List<TablePlayer> networkAll = db().query(new NetworkTablePlayersQuery(date, 10_000L, 3));
+        TablePlayer networkPlayerWithoutSessions = networkAll.get(2);
+        assertEquals(player3UUID, networkPlayerWithoutSessions.getPlayerUUID());
+        assertEquals(0L, networkPlayerWithoutSessions.getLastSeen().orElseThrow());
+        assertEquals(0L, networkPlayerWithoutSessions.getActivePlaytime().orElseThrow());
+        assertEquals(0, networkPlayerWithoutSessions.getSessionCount().orElseThrow());
+        assertEquals(0.0, networkPlayerWithoutSessions.getCurrentActivityIndex().orElseThrow().getValue());
     }
 
     @Test
@@ -429,6 +440,15 @@ public interface DatabaseTest extends DatabaseTestPreparer {
                 Set.of(result.getNicknames().split(",")));
         assertEquals("Tied latest location", result.getGeolocation().orElseThrow());
         assertTrue(result.isBanned());
+
+        TablePlayer networkResult = db().query(new NetworkTablePlayersQuery(date, 10_000L, 1)).get(0);
+        assertEquals(2, networkResult.getSessionCount().orElseThrow());
+        assertEquals(10_900L, networkResult.getActivePlaytime().orElseThrow());
+        assertEquals(new Ping(0L, null, 10, 200, 85.0), networkResult.getPing());
+        assertEquals(Set.of("CurrentServerNick", "OtherServerNick"),
+                Set.of(networkResult.getNicknames().split(",")));
+        assertEquals("Tied latest location", networkResult.getGeolocation().orElseThrow());
+        assertTrue(networkResult.isBanned());
     }
 
     @Test
