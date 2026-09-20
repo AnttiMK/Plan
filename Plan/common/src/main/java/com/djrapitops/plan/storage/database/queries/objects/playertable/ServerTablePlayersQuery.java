@@ -70,7 +70,7 @@ public class ServerTablePlayersQuery implements Query<List<TablePlayer>> {
                 cte("session_last_seen", selectSessionLastSeen(serverId)) + ',' +
                 cte("recent_players", selectRecentPlayers(serverId)) + ',' +
                 cte("session_metrics", selectSessionMetrics(serverId)) + ',' +
-                cte("activity_parameters", ActivityIndexQueries.activityIndexParametersSQL()) + ',' +
+                cte("activity_parameters", ActivityIndexQueries.activityIndexThresholdSQL()) + ',' +
                 cte("ping_data", selectPingData(serverId)) + ',' +
                 cte("nickname_data", selectNicknameData()) + ',' +
                 cte("geolocation_data", selectGeolocationData()) +
@@ -82,7 +82,7 @@ public class ServerTablePlayersQuery implements Query<List<TablePlayer>> {
                 statement.setString(1, serverUUID.toString());
                 statement.setInt(2, xMostRecentPlayers);
                 ActivityIndexQueries.setWeeklyActivePlaytimeParameters(statement, 3, date);
-                ActivityIndexQueries.setActivityIndexParameters(statement, 9, activeMsThreshold);
+                ActivityIndexQueries.setActivityIndexThresholdParameter(statement, 9, activeMsThreshold);
             }
 
             @Override
@@ -191,7 +191,7 @@ public class ServerTablePlayersQuery implements Query<List<TablePlayer>> {
                 "rp.last_seen," +
                 "sm.count," +
                 "sm.active_playtime," +
-                ActivityIndexQueries.activityIndexFromWeeklyPlaytimeSQL("sm", "ap") + " AS activity_index," +
+                ActivityIndexQueries.activityIndexFromWeeklyPlaytimeSQL("sm", "ap.threshold") + " AS activity_index," +
                 "pi." + PingTable.MIN_PING + ',' +
                 "pi." + PingTable.MAX_PING + ',' +
                 "pi." + PingTable.AVG_PING + ',' +

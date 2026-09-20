@@ -99,17 +99,15 @@ public class ActivityIndexQueries {
                 + prefix + SessionsTable.SESSION_START + "<=? THEN " + activePlaytime + " ELSE 0 END") + " AS week_3";
     }
 
-    public static String activityIndexFromWeeklyPlaytimeSQL(String metricsAlias, String parametersAlias) {
-        String pi = parametersAlias + ".pi";
-        String threshold = parametersAlias + ".threshold";
-        String weekOne = inactivityIndexSQL("COALESCE(" + metricsAlias + ".week_1,0)", pi, threshold);
-        String weekTwo = inactivityIndexSQL("COALESCE(" + metricsAlias + ".week_2,0)", pi, threshold);
-        String weekThree = inactivityIndexSQL("COALESCE(" + metricsAlias + ".week_3,0)", pi, threshold);
+    public static String activityIndexFromWeeklyPlaytimeSQL(String metricsAlias, String threshold) {
+        String weekOne = inactivityIndexSQL("COALESCE(" + metricsAlias + ".week_1,0)", threshold);
+        String weekTwo = inactivityIndexSQL("COALESCE(" + metricsAlias + ".week_2,0)", threshold);
+        String weekThree = inactivityIndexSQL("COALESCE(" + metricsAlias + ".week_3,0)", threshold);
         return activityIndexSQL("((" + weekOne + '+' + weekTwo + '+' + weekThree + ")/3.0)");
     }
 
-    public static String activityIndexParametersSQL() {
-        return SELECT + "? AS pi,? AS threshold";
+    public static String activityIndexThresholdSQL() {
+        return SELECT + "? AS threshold";
     }
 
     public static void setWeeklyActivePlaytimeParameters(PreparedStatement statement, int index, long date) throws SQLException {
@@ -122,9 +120,8 @@ public class ActivityIndexQueries {
         statement.setLong(index + 5, date - 2L * week);
     }
 
-    public static void setActivityIndexParameters(PreparedStatement statement, int index, long playtimeThreshold) throws SQLException {
-        statement.setDouble(index, Math.PI);
-        statement.setLong(index + 1, playtimeThreshold);
+    public static void setActivityIndexThresholdParameter(PreparedStatement statement, int index, long playtimeThreshold) throws SQLException {
+        statement.setLong(index, playtimeThreshold);
     }
 
     public static String selectActivityIndexSQL() {
@@ -143,7 +140,7 @@ public class ActivityIndexQueries {
         String selectThreeWeeks = selectActivePlaytimeSQL + UNION_ALL + selectActivePlaytimeSQL + UNION_ALL + selectActivePlaytimeSQL;
 
         return SELECT +
-                activityIndexFromAveragePlaytimeSQL("ax_q1.active_playtime", "?", "?") + " as activity_index," +
+                activityIndexFromAveragePlaytimeSQL("ax_q1.active_playtime", "?") + " as activity_index," +
                 "ax_u." + UsersTable.ID + " as user_id," +
                 "ax_u." + UsersTable.USER_UUID +
                 FROM + '(' + selectThreeWeeks + ") ax_q1" +
@@ -152,25 +149,25 @@ public class ActivityIndexQueries {
     }
 
     public static void setSelectActivityIndexSQLParameters(PreparedStatement statement, int index, long playtimeThreshold, ServerUUID serverUUID, long date) throws SQLException {
-        setActivityIndexParameters(statement, index, playtimeThreshold);
+        setActivityIndexThresholdParameter(statement, index, playtimeThreshold);
 
-        statement.setString(index + 2, serverUUID.toString());
-        statement.setLong(index + 3, date - TimeUnit.DAYS.toMillis(7L));
-        statement.setLong(index + 4, date);
-        statement.setString(index + 5, serverUUID.toString());
-        statement.setLong(index + 6, date - TimeUnit.DAYS.toMillis(14L));
-        statement.setLong(index + 7, date - TimeUnit.DAYS.toMillis(7L));
-        statement.setString(index + 8, serverUUID.toString());
-        statement.setLong(index + 9, date - TimeUnit.DAYS.toMillis(21L));
-        statement.setLong(index + 10, date - TimeUnit.DAYS.toMillis(14L));
+        statement.setString(index + 1, serverUUID.toString());
+        statement.setLong(index + 2, date - TimeUnit.DAYS.toMillis(7L));
+        statement.setLong(index + 3, date);
+        statement.setString(index + 4, serverUUID.toString());
+        statement.setLong(index + 5, date - TimeUnit.DAYS.toMillis(14L));
+        statement.setLong(index + 6, date - TimeUnit.DAYS.toMillis(7L));
+        statement.setString(index + 7, serverUUID.toString());
+        statement.setLong(index + 8, date - TimeUnit.DAYS.toMillis(21L));
+        statement.setLong(index + 9, date - TimeUnit.DAYS.toMillis(14L));
     }
 
-    static String activityIndexFromAveragePlaytimeSQL(String playtime, String pi, String threshold) {
-        return activityIndexSQL("AVG(" + inactivityIndexSQL(playtime, pi, threshold) + ')');
+    static String activityIndexFromAveragePlaytimeSQL(String playtime, String threshold) {
+        return activityIndexSQL("AVG(" + inactivityIndexSQL(playtime, threshold) + ')');
     }
 
-    private static String inactivityIndexSQL(String playtime, String pi, String threshold) {
-        return "1.0/(" + pi + "/2.0*(" + playtime + "*1.0/" + threshold + ")+1.0)";
+    private static String inactivityIndexSQL(String playtime, String threshold) {
+        return "1.0/(PI()/2.0*(" + playtime + "*1.0/" + threshold + ")+1.0)";
     }
 
     private static String activityIndexSQL(String averageInactivity) {
@@ -195,10 +192,10 @@ public class ActivityIndexQueries {
             @Override
             public void prepare(PreparedStatement statement) throws SQLException {
                 setSelectActivityIndexSQLParameters(statement, 1, playtimeThreshold, serverUUID, date);
-                statement.setString(12, serverUUID.toString());
-                statement.setLong(13, date);
-                statement.setDouble(14, above);
-                statement.setDouble(15, below);
+                statement.setString(11, serverUUID.toString());
+                statement.setLong(12, date);
+                statement.setDouble(13, above);
+                statement.setDouble(14, below);
             }
 
             @Override
@@ -228,11 +225,11 @@ public class ActivityIndexQueries {
             @Override
             public void prepare(PreparedStatement statement) throws SQLException {
                 setSelectActivityIndexSQLParameters(statement, 1, threshold, serverUUID, before);
-                statement.setString(12, serverUUID.toString());
-                statement.setLong(13, after);
-                statement.setLong(14, before);
-                statement.setDouble(15, ActivityIndex.REGULAR);
-                statement.setDouble(16, 5.1);
+                statement.setString(11, serverUUID.toString());
+                statement.setLong(12, after);
+                statement.setLong(13, before);
+                statement.setDouble(14, ActivityIndex.REGULAR);
+                statement.setDouble(15, 5.1);
             }
 
             @Override
@@ -266,11 +263,11 @@ public class ActivityIndexQueries {
             @Override
             public void prepare(PreparedStatement statement) throws SQLException {
                 setSelectActivityIndexSQLParameters(statement, 1, threshold, serverUUID, start);
-                setSelectActivityIndexSQLParameters(statement, 12, threshold, serverUUID, end);
-                statement.setDouble(23, ActivityIndex.REGULAR);
-                statement.setDouble(24, 5.1);
-                statement.setDouble(25, -0.1);
-                statement.setDouble(26, ActivityIndex.IRREGULAR);
+                setSelectActivityIndexSQLParameters(statement, 11, threshold, serverUUID, end);
+                statement.setDouble(21, ActivityIndex.REGULAR);
+                statement.setDouble(22, 5.1);
+                statement.setDouble(23, -0.1);
+                statement.setDouble(24, ActivityIndex.IRREGULAR);
             }
 
             @Override
@@ -300,11 +297,11 @@ public class ActivityIndexQueries {
                 @Override
                 public void prepare(PreparedStatement statement) throws SQLException {
                     setSelectActivityIndexSQLParameters(statement, 1, threshold, serverUUID, before);
-                    statement.setLong(12, before);
-                    statement.setLong(13, after);
-                    statement.setString(14, serverUUID.toString());
-                    statement.setDouble(15, ActivityIndex.REGULAR);
-                    statement.setDouble(16, 5.1);
+                    statement.setLong(11, before);
+                    statement.setLong(12, after);
+                    statement.setString(13, serverUUID.toString());
+                    statement.setDouble(14, ActivityIndex.REGULAR);
+                    statement.setDouble(15, 5.1);
                 }
 
                 @Override
@@ -334,11 +331,11 @@ public class ActivityIndexQueries {
                 @Override
                 public void prepare(PreparedStatement statement) throws SQLException {
                     setSelectActivityIndexSQLParameters(statement, 1, threshold, serverUUID, before);
-                    statement.setLong(12, before);
-                    statement.setLong(13, after);
-                    statement.setString(14, serverUUID.toString());
-                    statement.setDouble(15, ActivityIndex.REGULAR);
-                    statement.setDouble(16, 5.1);
+                    statement.setLong(11, before);
+                    statement.setLong(12, after);
+                    statement.setString(13, serverUUID.toString());
+                    statement.setDouble(14, ActivityIndex.REGULAR);
+                    statement.setDouble(15, 5.1);
                 }
 
                 @Override
@@ -369,11 +366,11 @@ public class ActivityIndexQueries {
                 @Override
                 public void prepare(PreparedStatement statement) throws SQLException {
                     setSelectActivityIndexSQLParameters(statement, 1, threshold, serverUUID, before);
-                    statement.setLong(12, before);
-                    statement.setLong(13, after);
-                    statement.setString(14, serverUUID.toString());
-                    statement.setDouble(15, ActivityIndex.REGULAR);
-                    statement.setDouble(16, 5.1);
+                    statement.setLong(11, before);
+                    statement.setLong(12, after);
+                    statement.setString(13, serverUUID.toString());
+                    statement.setDouble(14, ActivityIndex.REGULAR);
+                    statement.setDouble(15, 5.1);
                 }
 
                 @Override

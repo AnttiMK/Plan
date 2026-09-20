@@ -101,7 +101,7 @@ public class NetworkActivityIndexQueries {
         String selectThreeWeeks = selectActivePlaytimeSQL + UNION_ALL + selectActivePlaytimeSQL + UNION_ALL + selectActivePlaytimeSQL;
 
         return SELECT +
-                ActivityIndexQueries.activityIndexFromAveragePlaytimeSQL("ax_q1.active_playtime", "?", "?") + " as activity_index," +
+                ActivityIndexQueries.activityIndexFromAveragePlaytimeSQL("ax_q1.active_playtime", "?") + " as activity_index," +
                 "ax_u." + UsersTable.ID + " as user_id," +
                 "ax_u." + UsersTable.USER_UUID +
                 FROM + '(' + selectThreeWeeks + ") ax_q1" +
@@ -110,8 +110,8 @@ public class NetworkActivityIndexQueries {
     }
 
     public static void setSelectActivityIndexSQLParameters(PreparedStatement statement, int index, long playtimeThreshold, long date) throws SQLException {
-        ActivityIndexQueries.setActivityIndexParameters(statement, index, playtimeThreshold);
-        ActivityIndexQueries.setWeeklyActivePlaytimeParameters(statement, index + 2, date);
+        ActivityIndexQueries.setActivityIndexThresholdParameter(statement, index, playtimeThreshold);
+        ActivityIndexQueries.setWeeklyActivePlaytimeParameters(statement, index + 1, date);
     }
 
     public static Query<Integer> fetchActivityGroupCount(long date, long playtimeThreshold, double above, double below) {
@@ -131,9 +131,9 @@ public class NetworkActivityIndexQueries {
             @Override
             public void prepare(PreparedStatement statement) throws SQLException {
                 setSelectActivityIndexSQLParameters(statement, 1, playtimeThreshold, date);
-                statement.setLong(9, date);
-                statement.setDouble(10, above);
-                statement.setDouble(11, below);
+                statement.setLong(8, date);
+                statement.setDouble(9, above);
+                statement.setDouble(10, below);
             }
 
             @Override
@@ -161,7 +161,7 @@ public class NetworkActivityIndexQueries {
             @Override
             public void prepare(PreparedStatement statement) throws SQLException {
                 setSelectActivityIndexSQLParameters(statement, 1, threshold, date);
-                statement.setLong(9, date);
+                statement.setLong(8, date);
             }
 
             @Override
@@ -192,10 +192,10 @@ public class NetworkActivityIndexQueries {
             @Override
             public void prepare(PreparedStatement statement) throws SQLException {
                 setSelectActivityIndexSQLParameters(statement, 1, threshold, before);
-                statement.setLong(9, after);
-                statement.setLong(10, before);
-                statement.setDouble(11, ActivityIndex.REGULAR);
-                statement.setDouble(12, 5.1);
+                statement.setLong(8, after);
+                statement.setLong(9, before);
+                statement.setDouble(10, ActivityIndex.REGULAR);
+                statement.setDouble(11, 5.1);
             }
 
             @Override
@@ -228,11 +228,11 @@ public class NetworkActivityIndexQueries {
             @Override
             public void prepare(PreparedStatement statement) throws SQLException {
                 setSelectActivityIndexSQLParameters(statement, 1, threshold, end);
-                setSelectActivityIndexSQLParameters(statement, 9, threshold, start);
-                statement.setDouble(17, ActivityIndex.REGULAR);
-                statement.setDouble(18, 5.1);
-                statement.setDouble(19, -0.1);
-                statement.setDouble(20, ActivityIndex.IRREGULAR);
+                setSelectActivityIndexSQLParameters(statement, 8, threshold, start);
+                statement.setDouble(15, ActivityIndex.REGULAR);
+                statement.setDouble(16, 5.1);
+                statement.setDouble(17, -0.1);
+                statement.setDouble(18, ActivityIndex.IRREGULAR);
             }
 
             @Override
@@ -261,10 +261,10 @@ public class NetworkActivityIndexQueries {
                 @Override
                 public void prepare(PreparedStatement statement) throws SQLException {
                     setSelectActivityIndexSQLParameters(statement, 1, threshold, before);
-                    statement.setLong(9, before);
-                    statement.setLong(10, after);
-                    statement.setDouble(11, ActivityIndex.REGULAR);
-                    statement.setDouble(12, 5.1);
+                    statement.setLong(8, before);
+                    statement.setLong(9, after);
+                    statement.setDouble(10, ActivityIndex.REGULAR);
+                    statement.setDouble(11, 5.1);
                 }
 
                 @Override
@@ -293,10 +293,10 @@ public class NetworkActivityIndexQueries {
                 @Override
                 public void prepare(PreparedStatement statement) throws SQLException {
                     setSelectActivityIndexSQLParameters(statement, 1, threshold, before);
-                    statement.setLong(9, before);
-                    statement.setLong(10, after);
-                    statement.setDouble(11, ActivityIndex.REGULAR);
-                    statement.setDouble(12, 5.1);
+                    statement.setLong(8, before);
+                    statement.setLong(9, after);
+                    statement.setDouble(10, ActivityIndex.REGULAR);
+                    statement.setDouble(11, 5.1);
                 }
 
                 @Override
@@ -326,10 +326,10 @@ public class NetworkActivityIndexQueries {
                 @Override
                 public void prepare(PreparedStatement statement) throws SQLException {
                     setSelectActivityIndexSQLParameters(statement, 1, threshold, before);
-                    statement.setLong(9, before);
-                    statement.setLong(10, after);
-                    statement.setDouble(11, ActivityIndex.REGULAR);
-                    statement.setDouble(12, 5.1);
+                    statement.setLong(8, before);
+                    statement.setLong(9, after);
+                    statement.setDouble(10, ActivityIndex.REGULAR);
+                    statement.setDouble(11, 5.1);
                 }
 
                 @Override
