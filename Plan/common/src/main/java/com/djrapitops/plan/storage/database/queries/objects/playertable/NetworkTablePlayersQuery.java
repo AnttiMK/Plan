@@ -22,7 +22,7 @@ import com.djrapitops.plan.gathering.domain.Ping;
 import com.djrapitops.plan.storage.database.SQLDB;
 import com.djrapitops.plan.storage.database.queries.Query;
 import com.djrapitops.plan.storage.database.queries.QueryStatement;
-import com.djrapitops.plan.storage.database.queries.analysis.NetworkActivityIndexQueries;
+import com.djrapitops.plan.storage.database.queries.analysis.ActivityIndexQueries;
 import com.djrapitops.plan.storage.database.sql.tables.*;
 
 import java.sql.PreparedStatement;
@@ -53,71 +53,24 @@ public class NetworkTablePlayersQuery implements Query<List<TablePlayer>> {
 
     @Override
     public List<TablePlayer> executeQuery(SQLDB db) {
-        String selectLatestGeolocations = SELECT +
-                "a." + GeoInfoTable.USER_ID + ',' +
-                "a." + GeoInfoTable.GEOLOCATION +
-                FROM + GeoInfoTable.TABLE_NAME + " a" +
-                // Super smart optimization https://stackoverflow.com/a/28090544
-                // Join the last_used column, but only if there's a bigger one.
-                // That way the biggest a.last_used value will have NULL on the b.last_used column and MAX doesn't need to be used.
-                LEFT_JOIN + GeoInfoTable.TABLE_NAME + " b ON a." + GeoInfoTable.USER_ID + "=b." + GeoInfoTable.USER_ID + AND + "a." + GeoInfoTable.LAST_USED + "<b." + GeoInfoTable.LAST_USED +
-                WHERE + "b." + GeoInfoTable.LAST_USED + IS_NULL;
+        String sql = "WITH " +
+                cte("session_last_seen", selectSessionLastSeen()) + ',' +
+                cte("recent_players", selectRecentPlayers()) + ',' +
+                cte("session_metrics", selectSessionMetrics()) + ',' +
+                cte("activity_parameters", ActivityIndexQueries.activityIndexThresholdSQL()) + ',' +
+                cte("ping_data", selectPingData()) + ',' +
+                cte("banned_data", selectBannedData()) + ',' +
+                cte("nickname_data", selectNicknameData()) + ',' +
+                cte("geolocation_data", selectGeolocationData()) +
+                selectPlayers();
 
-        String selectSessionData = SELECT + "s." + SessionsTable.USER_ID + ',' +
-                "MAX(" + SessionsTable.SESSION_END + ") as last_seen," +
-                "COUNT(1) as count," +
-                "SUM(" + SessionsTable.SESSION_END + '-' + SessionsTable.SESSION_START + '-' + SessionsTable.AFK_TIME + ") as active_playtime" +
-                FROM + SessionsTable.TABLE_NAME + " s" +
-                GROUP_BY + "s." + SessionsTable.USER_ID;
-
-        String selectPingData = SELECT +
-                "p." + PingTable.USER_ID + ',' +
-                avg("p." + PingTable.AVG_PING) + " as " + PingTable.AVG_PING + "," +
-                max("p." + PingTable.MAX_PING) + " as " + PingTable.MAX_PING + "," +
-                min("p." + PingTable.MIN_PING) + " as " + PingTable.MIN_PING +
-                FROM + PingTable.TABLE_NAME + " p" +
-                GROUP_BY + "p." + PingTable.USER_ID;
-
-        String selectBanned = SELECT + DISTINCT + "ub." + UserInfoTable.USER_ID +
-                FROM + UserInfoTable.TABLE_NAME + " ub" +
-                WHERE + UserInfoTable.BANNED + "=?";
-
-        String selectNicknames = SELECT +
-                "un." + UsersTable.ID + ',' +
-                "GROUP_CONCAT(DISTINCT " + "n." + NicknamesTable.NICKNAME + ") as nicknames" +
-                FROM + NicknamesTable.TABLE_NAME + " n" +
-                INNER_JOIN + UsersTable.TABLE_NAME + " un ON n." + NicknamesTable.USER_UUID + "=un." + UsersTable.USER_UUID +
-                GROUP_BY + "un." + UsersTable.ID;
-
-        String selectBaseUsers = SELECT +
-                "u." + UsersTable.USER_UUID + ',' +
-                "u." + UsersTable.USER_NAME + ',' +
-                "u." + UsersTable.REGISTERED + ',' +
-                "ban." + UserInfoTable.USER_ID + " as banned," +
-                "geo." + GeoInfoTable.GEOLOCATION + ',' +
-                "ses.last_seen," +
-                "ses.count," +
-                "ses.active_playtime," +
-                "act.activity_index," +
-                "pi.min_ping," +
-                "pi.max_ping," +
-                "pi.avg_ping," +
-                "ni.nicknames" +
-                FROM + UsersTable.TABLE_NAME + " u" +
-                LEFT_JOIN + '(' + selectBanned + ") ban on ban." + UserInfoTable.USER_ID + "=u." + UsersTable.ID +
-                LEFT_JOIN + '(' + selectLatestGeolocations + ") geo on geo." + GeoInfoTable.USER_ID + "=u." + UsersTable.ID +
-                LEFT_JOIN + '(' + selectSessionData + ") ses on ses." + SessionsTable.USER_ID + "=u." + UsersTable.ID +
-                LEFT_JOIN + '(' + NetworkActivityIndexQueries.selectActivityIndexSQL() + ") act on u." + UsersTable.ID + "=act." + UserInfoTable.USER_ID +
-                LEFT_JOIN + '(' + selectPingData + ") pi on pi." + PingTable.USER_ID + "=u." + UsersTable.ID +
-                LEFT_JOIN + '(' + selectNicknames + ") ni on ni." + UsersTable.ID + "=u." + UsersTable.ID +
-                ORDER_BY + "ses.last_seen DESC LIMIT ?";
-
-        return db.query(new QueryStatement<>(selectBaseUsers, 1000) {
+        return db.query(new QueryStatement<>(sql, 1000) {
             @Override
             public void prepare(PreparedStatement statement) throws SQLException {
-                statement.setBoolean(1, true);
-                NetworkActivityIndexQueries.setSelectActivityIndexSQLParameters(statement, 2, activeMsThreshold, date);
-                statement.setInt(10, xMostRecentPlayers);
+                statement.setInt(1, xMostRecentPlayers);
+                ActivityIndexQueries.setWeeklyActivePlaytimeParameters(statement, 2, date);
+                ActivityIndexQueries.setActivityIndexThresholdParameter(statement, 8, activeMsThreshold);
+                statement.setBoolean(9, true);
             }
 
             @Override
@@ -146,5 +99,98 @@ public class NetworkTablePlayersQuery implements Query<List<TablePlayer>> {
                 return players;
             }
         });
+    }
+
+    private static String selectSessionLastSeen() {
+        return SELECT + "s." + SessionsTable.USER_ID + ',' +
+                max("s." + SessionsTable.SESSION_END) + " AS last_seen" +
+                FROM + SessionsTable.TABLE_NAME + " s" +
+                GROUP_BY + "s." + SessionsTable.USER_ID;
+    }
+
+    private static String selectRecentPlayers() {
+        return SELECT + "u." + UsersTable.ID + " AS " + UsersTable.ID + ',' +
+                "sls.last_seen" +
+                FROM + UsersTable.TABLE_NAME + " u" +
+                LEFT_JOIN + "session_last_seen sls ON sls." + SessionsTable.USER_ID + "=u." + UsersTable.ID +
+                ORDER_BY + "sls.last_seen DESC" +
+                LIMIT + '?';
+    }
+
+    private static String selectSessionMetrics() {
+        return SELECT + "s." + SessionsTable.USER_ID + ',' +
+                "COUNT(1) AS count," +
+                sum(ActivityIndexQueries.activePlaytimeSQL("s")) + " AS active_playtime," +
+                ActivityIndexQueries.weeklyActivePlaytimeSQL("s") +
+                FROM + SessionsTable.TABLE_NAME + " s" +
+                INNER_JOIN + "recent_players rp ON rp." + UsersTable.ID + "=s." + SessionsTable.USER_ID +
+                GROUP_BY + "s." + SessionsTable.USER_ID;
+    }
+
+    private static String selectPingData() {
+        return SELECT + "p." + PingTable.USER_ID + ',' +
+                avg("p." + PingTable.AVG_PING) + " AS " + PingTable.AVG_PING + ',' +
+                max("p." + PingTable.MAX_PING) + " AS " + PingTable.MAX_PING + ',' +
+                min("p." + PingTable.MIN_PING) + " AS " + PingTable.MIN_PING +
+                FROM + PingTable.TABLE_NAME + " p" +
+                INNER_JOIN + "recent_players rp ON rp." + UsersTable.ID + "=p." + PingTable.USER_ID +
+                GROUP_BY + "p." + PingTable.USER_ID;
+    }
+
+    private static String selectBannedData() {
+        return SELECT + DISTINCT + "ui." + UserInfoTable.USER_ID +
+                FROM + UserInfoTable.TABLE_NAME + " ui" +
+                INNER_JOIN + "recent_players rp ON rp." + UsersTable.ID + "=ui." + UserInfoTable.USER_ID +
+                WHERE + "ui." + UserInfoTable.BANNED + "=?";
+    }
+
+    private static String selectNicknameData() {
+        return SELECT + "n." + NicknamesTable.USER_UUID + ',' +
+                "GROUP_CONCAT(DISTINCT n." + NicknamesTable.NICKNAME + ") AS nicknames" +
+                FROM + NicknamesTable.TABLE_NAME + " n" +
+                INNER_JOIN + UsersTable.TABLE_NAME + " nu ON nu." + UsersTable.USER_UUID + "=n." + NicknamesTable.USER_UUID +
+                INNER_JOIN + "recent_players rp ON rp." + UsersTable.ID + "=nu." + UsersTable.ID +
+                GROUP_BY + "n." + NicknamesTable.USER_UUID;
+    }
+
+    private static String selectGeolocationData() {
+        return SELECT + "a." + GeoInfoTable.USER_ID + ',' +
+                "a." + GeoInfoTable.GEOLOCATION +
+                FROM + GeoInfoTable.TABLE_NAME + " a" +
+                INNER_JOIN + "recent_players rp ON rp." + UsersTable.ID + "=a." + GeoInfoTable.USER_ID +
+                LEFT_JOIN + GeoInfoTable.TABLE_NAME + " b ON a." + GeoInfoTable.USER_ID + "=b." + GeoInfoTable.USER_ID +
+                AND + "(a." + GeoInfoTable.LAST_USED + "<b." + GeoInfoTable.LAST_USED +
+                OR + "(a." + GeoInfoTable.LAST_USED + "=b." + GeoInfoTable.LAST_USED +
+                AND + "a." + GeoInfoTable.ID + "<b." + GeoInfoTable.ID + "))" +
+                WHERE + "b." + GeoInfoTable.ID + IS_NULL;
+    }
+
+    private static String selectPlayers() {
+        return SELECT + "u." + UsersTable.USER_UUID + ',' +
+                "u." + UsersTable.USER_NAME + ',' +
+                "u." + UsersTable.REGISTERED + ',' +
+                "ban." + UserInfoTable.USER_ID + " AS banned," +
+                "geo." + GeoInfoTable.GEOLOCATION + ',' +
+                "rp.last_seen," +
+                "sm.count," +
+                "sm.active_playtime," +
+                ActivityIndexQueries.activityIndexFromWeeklyPlaytimeSQL("sm", "ap.threshold") + " AS activity_index," +
+                "pi." + PingTable.MIN_PING + ',' +
+                "pi." + PingTable.MAX_PING + ',' +
+                "pi." + PingTable.AVG_PING + ',' +
+                "ni.nicknames" +
+                FROM + "recent_players rp" +
+                INNER_JOIN + UsersTable.TABLE_NAME + " u ON u." + UsersTable.ID + "=rp." + UsersTable.ID +
+                " CROSS JOIN activity_parameters ap" +
+                LEFT_JOIN + "session_metrics sm ON sm." + SessionsTable.USER_ID + "=rp." + UsersTable.ID +
+                LEFT_JOIN + "ping_data pi ON pi." + PingTable.USER_ID + "=rp." + UsersTable.ID +
+                LEFT_JOIN + "banned_data ban ON ban." + UserInfoTable.USER_ID + "=rp." + UsersTable.ID +
+                LEFT_JOIN + "nickname_data ni ON ni." + NicknamesTable.USER_UUID + "=u." + UsersTable.USER_UUID +
+                LEFT_JOIN + "geolocation_data geo ON geo." + GeoInfoTable.USER_ID + "=rp." + UsersTable.ID +
+                ORDER_BY + "rp.last_seen DESC";
+    }
+
+    private static String cte(String name, String query) {
+        return name + " AS (" + query + ')';
     }
 }

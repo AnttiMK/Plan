@@ -16,6 +16,7 @@
  */
 package com.djrapitops.plan.storage.database;
 
+import com.djrapitops.plan.delivery.domain.DateObj;
 import com.djrapitops.plan.delivery.domain.Nickname;
 import com.djrapitops.plan.delivery.domain.TablePlayer;
 import com.djrapitops.plan.delivery.domain.container.PlayerContainer;
@@ -353,6 +354,101 @@ public interface DatabaseTest extends DatabaseTestPreparer {
         List<TablePlayer> result = db().query(new ServerTablePlayersQuery(serverUUID(), System.currentTimeMillis(), 10L, 1));
         assertEquals(1, result.size(), () -> "Incorrect query result: " + result);
         assertNotEquals(Collections.emptyList(), result);
+    }
+
+    @Test
+    default void serverTablePlayersQueryLimitsByMostRecentSession() {
+        long date = TimeUnit.DAYS.toMillis(100L);
+        db().executeTransaction(new StoreServerPlayerTransaction(playerUUID, () -> date - 4_000L,
+                TestConstants.PLAYER_ONE_NAME, serverUUID(), TestConstants.GET_PLAYER_HOSTNAME));
+        db().executeTransaction(new StoreServerPlayerTransaction(player2UUID, () -> date - 3_000L,
+                TestConstants.PLAYER_TWO_NAME, serverUUID(), TestConstants.GET_PLAYER_HOSTNAME));
+        db().executeTransaction(new StoreServerPlayerTransaction(player3UUID, () -> date - 2_000L,
+                TestConstants.PLAYER_THREE_NAME, serverUUID(), TestConstants.GET_PLAYER_HOSTNAME));
+        db().executeTransaction(new StoreSessionTransaction(
+                new FinishedSession(playerUUID, serverUUID(), date - 3_000L, date - 2_000L, 100L, new DataMap())));
+        db().executeTransaction(new StoreSessionTransaction(
+                new FinishedSession(player2UUID, serverUUID(), date - 2_000L, date - 1_000L, 200L, new DataMap())));
+
+        List<TablePlayer> limited = db().query(new ServerTablePlayersQuery(serverUUID(), date, 10_000L, 2));
+        assertEquals(List.of(player2UUID, playerUUID),
+                limited.stream().map(TablePlayer::getPlayerUUID).toList());
+        assertEquals(800L, limited.get(0).getActivePlaytime().orElseThrow());
+        assertEquals(1, limited.get(0).getSessionCount().orElseThrow());
+
+        List<TablePlayer> all = db().query(new ServerTablePlayersQuery(serverUUID(), date, 10_000L, 3));
+        TablePlayer playerWithoutSessions = all.get(2);
+        assertEquals(player3UUID, playerWithoutSessions.getPlayerUUID());
+        assertEquals(0L, playerWithoutSessions.getLastSeen().orElseThrow());
+        assertEquals(0L, playerWithoutSessions.getActivePlaytime().orElseThrow());
+        assertEquals(0, playerWithoutSessions.getSessionCount().orElseThrow());
+        assertEquals(0.0, playerWithoutSessions.getCurrentActivityIndex().orElseThrow().getValue());
+
+        List<TablePlayer> networkLimited = db().query(new NetworkTablePlayersQuery(date, 10_000L, 2));
+        assertEquals(List.of(player2UUID, playerUUID),
+                networkLimited.stream().map(TablePlayer::getPlayerUUID).toList());
+        List<TablePlayer> networkAll = db().query(new NetworkTablePlayersQuery(date, 10_000L, 3));
+        TablePlayer networkPlayerWithoutSessions = networkAll.get(2);
+        assertEquals(player3UUID, networkPlayerWithoutSessions.getPlayerUUID());
+        assertEquals(0L, networkPlayerWithoutSessions.getLastSeen().orElseThrow());
+        assertEquals(0L, networkPlayerWithoutSessions.getActivePlaytime().orElseThrow());
+        assertEquals(0, networkPlayerWithoutSessions.getSessionCount().orElseThrow());
+        assertEquals(0.0, networkPlayerWithoutSessions.getCurrentActivityIndex().orElseThrow().getValue());
+    }
+
+    @Test
+    default void serverTablePlayersQueryScopesSupplementalDataCorrectly() {
+        long date = TimeUnit.DAYS.toMillis(100L);
+        ServerUUID secondServer = ServerUUID.randomUUID();
+        db().executeTransaction(new StoreServerInformationTransaction(
+                new Server(secondServer, TestConstants.SERVER_TWO_NAME, "", TestConstants.VERSION)));
+        db().executeTransaction(new StoreServerPlayerTransaction(playerUUID, () -> date - 2_000L,
+                TestConstants.PLAYER_ONE_NAME, serverUUID(), TestConstants.GET_PLAYER_HOSTNAME));
+        db().executeTransaction(new StoreServerPlayerTransaction(playerUUID, () -> date - 1_000L,
+                TestConstants.PLAYER_ONE_NAME, secondServer, TestConstants.GET_PLAYER_HOSTNAME));
+        db().executeTransaction(new StoreSessionTransaction(
+                new FinishedSession(playerUUID, serverUUID(), date - 2_000L, date - 1_000L, 100L, new DataMap())));
+        db().executeTransaction(new StoreSessionTransaction(
+                new FinishedSession(playerUUID, secondServer, date - 20_000L, date - 10_000L, 0L, new DataMap())));
+        db().executeTransaction(new PingStoreTransaction(playerUUID, serverUUID(), List.of(
+                new DateObj<>(date - 300L, 10),
+                new DateObj<>(date - 200L, 20),
+                new DateObj<>(date - 100L, 30)
+        )));
+        db().executeTransaction(new PingStoreTransaction(playerUUID, secondServer, List.of(
+                new DateObj<>(date - 300L, 100),
+                new DateObj<>(date - 100L, 200)
+        )));
+        db().executeTransaction(new StoreNicknameTransaction(
+                playerUUID, new Nickname("CurrentServerNick", date - 200L, serverUUID()), (uuid, name) -> false));
+        db().executeTransaction(new StoreNicknameTransaction(
+                playerUUID, new Nickname("OtherServerNick", date - 100L, secondServer), (uuid, name) -> false));
+        db().executeTransaction(new StoreGeoInfoTransaction(playerUUID, new GeoInfo("Old location", date - 200L)));
+        db().executeTransaction(new StoreGeoInfoTransaction(playerUUID, new GeoInfo("Latest location", date - 100L)));
+        db().executeTransaction(new StoreGeoInfoTransaction(playerUUID, new GeoInfo("Tied latest location", date - 100L)));
+        db().executeTransaction(new BanStatusTransaction(playerUUID, serverUUID(), true));
+
+        List<TablePlayer> players = db().query(new ServerTablePlayersQuery(serverUUID(), date, 10_000L, 1));
+        assertEquals(1, players.size());
+        TablePlayer result = players.get(0);
+
+        assertEquals(1, result.getSessionCount().orElseThrow());
+        assertEquals(900L, result.getActivePlaytime().orElseThrow());
+        assertEquals(date - 1_000L, result.getLastSeen().orElseThrow());
+        assertEquals(new Ping(0L, serverUUID(), 10, 30, 20.0), result.getPing());
+        assertEquals(Set.of("CurrentServerNick", "OtherServerNick"),
+                Set.of(result.getNicknames().split(",")));
+        assertEquals("Tied latest location", result.getGeolocation().orElseThrow());
+        assertTrue(result.isBanned());
+
+        TablePlayer networkResult = db().query(new NetworkTablePlayersQuery(date, 10_000L, 1)).get(0);
+        assertEquals(2, networkResult.getSessionCount().orElseThrow());
+        assertEquals(10_900L, networkResult.getActivePlaytime().orElseThrow());
+        assertEquals(new Ping(0L, null, 10, 200, 85.0), networkResult.getPing());
+        assertEquals(Set.of("CurrentServerNick", "OtherServerNick"),
+                Set.of(networkResult.getNicknames().split(",")));
+        assertEquals("Tied latest location", networkResult.getGeolocation().orElseThrow());
+        assertTrue(networkResult.isBanned());
     }
 
     @Test

@@ -174,6 +174,27 @@ public interface ActivityIndexQueriesTest extends DatabaseTestPreparer {
         });
     }
 
+    @Test
+    default void serverTableActivityIndexIncludesSessionsOnWeeklyBoundaries() {
+        long date = TimeUnit.DAYS.toMillis(100L);
+        long week = TimeUnit.DAYS.toMillis(7L);
+        long boundary = date - week;
+        long playtimeThreshold = TimeUnit.HOURS.toMillis(5L);
+        FinishedSession session = new FinishedSession(
+                playerUUID, serverUUID(), boundary - 1_000L, boundary, 100L, null);
+        db().executeTransaction(new StoreServerPlayerTransaction(playerUUID, () -> boundary - 1_000L,
+                TestConstants.PLAYER_ONE_NAME, serverUUID(), TestConstants.GET_PLAYER_HOSTNAME));
+        db().executeTransaction(new StoreSessionTransaction(session));
+
+        TablePlayer result = db().query(new ServerTablePlayersQuery(
+                        serverUUID(), date, playtimeThreshold, 1))
+                .get(0);
+
+        double expected = new ActivityIndex(List.of(session), date, playtimeThreshold).getValue();
+        double actual = result.getCurrentActivityIndex().orElseThrow().getValue();
+        assertEquals(expected, actual, 0.001);
+    }
+
     @RepeatedTest(value = 3, name = "Network Activity Index calculations match {currentRepetition}/{totalRepetitions}")
     default void networkActivityIndexCalculationsMatch() {
         storeSessions(_ -> true);

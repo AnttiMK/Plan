@@ -103,9 +103,9 @@ public class MultiServerActivityIndexQueries {
 
         String selectWeeks = SELECT +
                 "ps.user_id, " +
-                week(weekAgo, date, "w1") + ',' +
-                week(twoWeeksAgo, weekAgo, "w2") + ',' +
-                week(threeWeeksAgo, twoWeeksAgo, "w3") +
+                week(weekAgo, date, "week_1") + ',' +
+                week(twoWeeksAgo, weekAgo, "week_2") + ',' +
+                week(threeWeeksAgo, twoWeeksAgo, "week_3") +
                 FROM + SessionsTable.TABLE_NAME + " ps " +
                 WHERE + (serverUUIDs.isEmpty()
                 ? ""
@@ -114,13 +114,9 @@ public class MultiServerActivityIndexQueries {
                 AND + "ps." + SessionsTable.SESSION_START + "<" + date + " " +
                 GROUP_BY + "ps." + SessionsTable.USER_ID;
 
-        String activityIndex = "5.0 - 5.0 * ( " +
-                "( " +
-                "1 / (PI()/2 * (COALESCE(s.w1,0) / " + playtimeThreshold + ") + 1) + " +
-                "1 / (PI()/2 * (COALESCE(s.w2,0) / " + playtimeThreshold + ") + 1) + " +
-                "1 / (PI()/2 * (COALESCE(s.w3,0) / " + playtimeThreshold + ") + 1) " +
-                ") / 3 " +
-                ") AS activity_index ";
+        String activityIndex = ActivityIndexQueries.activityIndexFromWeeklyPlaytimeSQL(
+                "s", Long.toString(playtimeThreshold)
+        ) + " AS activity_index ";
 
         if (serverUUIDs.isEmpty()) {
             return SELECT + "u." + UsersTable.ID + " as user_id, " +
@@ -149,9 +145,9 @@ public class MultiServerActivityIndexQueries {
 
         String selectWeeks = SELECT +
                 "ps.user_id, " +
-                week(weekAgo, date, "w1") + ',' +
-                week(twoWeeksAgo, weekAgo, "w2") + ',' +
-                week(threeWeeksAgo, twoWeeksAgo, "w3") +
+                week(weekAgo, date, "week_1") + ',' +
+                week(twoWeeksAgo, weekAgo, "week_2") + ',' +
+                week(threeWeeksAgo, twoWeeksAgo, "week_3") +
                 FROM + SessionsTable.TABLE_NAME + " ps " +
                 WHERE + (serverUUIDs.isEmpty() ? "" : "ps." + SessionsTable.SERVER_ID + " IN " + ServerTable.selectServerIds(serverUUIDs) +
                                                       AND) + "ps." + SessionsTable.USER_ID + "=" + UsersTable.SELECT_USER_ID +
@@ -161,13 +157,9 @@ public class MultiServerActivityIndexQueries {
 
         return SELECT +
                 "s." + SessionsTable.USER_ID + ", " +
-                "5.0 - 5.0 * ( " +
-                "( " +
-                "1 / (PI()/2 * (COALESCE(s.w1,0) / " + playtimeThreshold + ") + 1) + " +
-                "1 / (PI()/2 * (COALESCE(s.w2,0) / " + playtimeThreshold + ") + 1) + " +
-                "1 / (PI()/2 * (COALESCE(s.w3,0) / " + playtimeThreshold + ") + 1) " +
-                ") / 3 " +
-                ") AS activity_index " +
+                ActivityIndexQueries.activityIndexFromWeeklyPlaytimeSQL(
+                        "s", Long.toString(playtimeThreshold)
+                ) + " AS activity_index " +
                 FROM + "( " + selectWeeks + ") s";
     }
 

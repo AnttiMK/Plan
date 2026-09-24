@@ -29,7 +29,6 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.*;
-import java.util.concurrent.TimeUnit;
 
 import static com.djrapitops.plan.storage.database.sql.building.Sql.*;
 
@@ -91,7 +90,7 @@ public class NetworkActivityIndexQueries {
                 "COALESCE(active_playtime,0) AS active_playtime" +
                 FROM + UsersTable.TABLE_NAME + " ax_ux" +
                 LEFT_JOIN + '(' + SELECT + SessionsTable.USER_ID +
-                ",SUM(" + SessionsTable.SESSION_END + '-' + SessionsTable.SESSION_START + '-' + SessionsTable.AFK_TIME + ") as active_playtime" +
+                ',' + sum(ActivityIndexQueries.activePlaytimeSQL("")) + " as active_playtime" +
                 FROM + SessionsTable.TABLE_NAME +
                 WHERE + SessionsTable.SESSION_END + ">=?" +
                 AND + SessionsTable.SESSION_START + "<=?" +
@@ -102,7 +101,7 @@ public class NetworkActivityIndexQueries {
         String selectThreeWeeks = selectActivePlaytimeSQL + UNION_ALL + selectActivePlaytimeSQL + UNION_ALL + selectActivePlaytimeSQL;
 
         return SELECT +
-                "5.0 - 5.0 * AVG(1.0 / (?/2.0 * (ax_q1.active_playtime*1.0/?) +1.0)) as activity_index," +
+                ActivityIndexQueries.activityIndexFromAveragePlaytimeSQL("ax_q1.active_playtime", "?") + " as activity_index," +
                 "ax_u." + UsersTable.ID + " as user_id," +
                 "ax_u." + UsersTable.USER_UUID +
                 FROM + '(' + selectThreeWeeks + ") ax_q1" +
@@ -111,15 +110,8 @@ public class NetworkActivityIndexQueries {
     }
 
     public static void setSelectActivityIndexSQLParameters(PreparedStatement statement, int index, long playtimeThreshold, long date) throws SQLException {
-        statement.setDouble(index, Math.PI);
-        statement.setLong(index + 1, playtimeThreshold);
-
-        statement.setLong(index + 2, date - TimeUnit.DAYS.toMillis(7L));
-        statement.setLong(index + 3, date);
-        statement.setLong(index + 4, date - TimeUnit.DAYS.toMillis(14L));
-        statement.setLong(index + 5, date - TimeUnit.DAYS.toMillis(7L));
-        statement.setLong(index + 6, date - TimeUnit.DAYS.toMillis(21L));
-        statement.setLong(index + 7, date - TimeUnit.DAYS.toMillis(14L));
+        ActivityIndexQueries.setActivityIndexThresholdParameter(statement, index, playtimeThreshold);
+        ActivityIndexQueries.setWeeklyActivePlaytimeParameters(statement, index + 1, date);
     }
 
     public static Query<Integer> fetchActivityGroupCount(long date, long playtimeThreshold, double above, double below) {
@@ -139,9 +131,9 @@ public class NetworkActivityIndexQueries {
             @Override
             public void prepare(PreparedStatement statement) throws SQLException {
                 setSelectActivityIndexSQLParameters(statement, 1, playtimeThreshold, date);
-                statement.setLong(9, date);
-                statement.setDouble(10, above);
-                statement.setDouble(11, below);
+                statement.setLong(8, date);
+                statement.setDouble(9, above);
+                statement.setDouble(10, below);
             }
 
             @Override
@@ -169,7 +161,7 @@ public class NetworkActivityIndexQueries {
             @Override
             public void prepare(PreparedStatement statement) throws SQLException {
                 setSelectActivityIndexSQLParameters(statement, 1, threshold, date);
-                statement.setLong(9, date);
+                statement.setLong(8, date);
             }
 
             @Override
@@ -200,10 +192,10 @@ public class NetworkActivityIndexQueries {
             @Override
             public void prepare(PreparedStatement statement) throws SQLException {
                 setSelectActivityIndexSQLParameters(statement, 1, threshold, before);
-                statement.setLong(9, after);
-                statement.setLong(10, before);
-                statement.setDouble(11, ActivityIndex.REGULAR);
-                statement.setDouble(12, 5.1);
+                statement.setLong(8, after);
+                statement.setLong(9, before);
+                statement.setDouble(10, ActivityIndex.REGULAR);
+                statement.setDouble(11, 5.1);
             }
 
             @Override
@@ -236,11 +228,11 @@ public class NetworkActivityIndexQueries {
             @Override
             public void prepare(PreparedStatement statement) throws SQLException {
                 setSelectActivityIndexSQLParameters(statement, 1, threshold, end);
-                setSelectActivityIndexSQLParameters(statement, 9, threshold, start);
-                statement.setDouble(17, ActivityIndex.REGULAR);
-                statement.setDouble(18, 5.1);
-                statement.setDouble(19, -0.1);
-                statement.setDouble(20, ActivityIndex.IRREGULAR);
+                setSelectActivityIndexSQLParameters(statement, 8, threshold, start);
+                statement.setDouble(15, ActivityIndex.REGULAR);
+                statement.setDouble(16, 5.1);
+                statement.setDouble(17, -0.1);
+                statement.setDouble(18, ActivityIndex.IRREGULAR);
             }
 
             @Override
@@ -269,10 +261,10 @@ public class NetworkActivityIndexQueries {
                 @Override
                 public void prepare(PreparedStatement statement) throws SQLException {
                     setSelectActivityIndexSQLParameters(statement, 1, threshold, before);
-                    statement.setLong(9, before);
-                    statement.setLong(10, after);
-                    statement.setDouble(11, ActivityIndex.REGULAR);
-                    statement.setDouble(12, 5.1);
+                    statement.setLong(8, before);
+                    statement.setLong(9, after);
+                    statement.setDouble(10, ActivityIndex.REGULAR);
+                    statement.setDouble(11, 5.1);
                 }
 
                 @Override
@@ -301,10 +293,10 @@ public class NetworkActivityIndexQueries {
                 @Override
                 public void prepare(PreparedStatement statement) throws SQLException {
                     setSelectActivityIndexSQLParameters(statement, 1, threshold, before);
-                    statement.setLong(9, before);
-                    statement.setLong(10, after);
-                    statement.setDouble(11, ActivityIndex.REGULAR);
-                    statement.setDouble(12, 5.1);
+                    statement.setLong(8, before);
+                    statement.setLong(9, after);
+                    statement.setDouble(10, ActivityIndex.REGULAR);
+                    statement.setDouble(11, 5.1);
                 }
 
                 @Override
@@ -334,10 +326,10 @@ public class NetworkActivityIndexQueries {
                 @Override
                 public void prepare(PreparedStatement statement) throws SQLException {
                     setSelectActivityIndexSQLParameters(statement, 1, threshold, before);
-                    statement.setLong(9, before);
-                    statement.setLong(10, after);
-                    statement.setDouble(11, ActivityIndex.REGULAR);
-                    statement.setDouble(12, 5.1);
+                    statement.setLong(8, before);
+                    statement.setLong(9, after);
+                    statement.setDouble(10, ActivityIndex.REGULAR);
+                    statement.setDouble(11, 5.1);
                 }
 
                 @Override
